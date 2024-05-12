@@ -1,0 +1,49 @@
+  // void outside(){  // procedura
+    int x = 20;
+    void increase() {
+    	//int a = 900;
+    	//return a;
+        x = x + 1;
+        print(x); // zewnetrzny x: 21
+        if(x == 21) { 
+        print("chuj");
+        	increase();
+        } endif
+    }
+    
+    //void localIncrease(int a, (int,int) -> int  b) {
+    int localIncrease(int a, & int b) {
+    int o = 3/1;
+        //int x = 69;
+        //int y = 7;
+        //int z = b(x,y);
+        //print(z);
+        //int z = b(x,y);
+        //print("chuj");
+        //print(a);
+        // print(b);
+        // a = a + 1;
+        // b = b + 1;
+        // print(b);
+        //print(a);
+        //int w =
+        increase();
+        print("po");
+        //print(w);
+        //print(x); // lokalny x: 0
+    }
+
+    int a = 4;
+    int b = 4;
+    localIncrease(a,b);
+    //localIncrease(a,lambda (int a, int b) int -> {return a + b;});
+    //print(a);
+    //print(b);
+    
+   // lambda (int a, int b) int -> {
+   //     return a + b;
+   // };
+    
+
+    print(x);    // zewnetrzny x: 21
+// }
