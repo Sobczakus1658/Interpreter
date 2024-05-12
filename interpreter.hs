@@ -18,22 +18,18 @@ interpretFromInput input = do
         parsedTokens = pProgram lexerTokens
     case parsedTokens of
         Right program -> checkAndRunProgram program
-        Left err -> putStrLn $ "Błąd typowania programu: " ++ show err
+        Left err -> putStrLn $ "Error during parsing: " ++ show err
 
 checkAndRunProgram :: Program -> IO ()
 checkAndRunProgram program = do
-    -- Left err -> putStrLn $ "Błąd typowania: " ++ err
-    -- Right program -> do
       result <- checkProgram program
       case result of
-          Left err -> putStrLn $ "Błąd typowania programu: " ++ show err
+          Left err -> putStrLn $ "Type Error: " ++ show err
           Right _ -> do
               putStrLn $ show program
               outcome <- exec program
-              -- putStrLn $ "Koniec"
-              -- putStrLn $ show result
               case outcome of
-                  Left err -> putStrLn $ "Błąd wykonywania programu: " ++ show err
-                  Right _ -> putStrLn $ "Koniec"
-                  -- Right x ->  putStrLn $ show x
+                  Left err -> putStrLn $ "Error during running: " ++ show err
+                  Right _ -> putStrLn $ "Exit"
+
 

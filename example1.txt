@@ -4,8 +4,8 @@
 //void main() {
     (int) -> int l1 = make_counter(1);
     //(int) -> int l10 = make_counter(10);
-    //int z = l1(123); 
-    //print(z);    // 2
+    int z = l1(123); 
+    print(z);    // 2
     //print(l10(10));  // 20
 
     //print(l1(1));    // 3

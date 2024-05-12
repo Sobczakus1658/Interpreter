@@ -29,8 +29,8 @@ data Stmt
     | Ass Ident Expr
     | Ret Expr
     | VRet
-    | Cond Expr Stmt
-    | CondElse Expr Stmt Stmt
+    | Cond Expr Block
+    | CondElse Expr Block Block
     | While Expr Stmt
     | SExp Expr
     | FunExp FnDef
