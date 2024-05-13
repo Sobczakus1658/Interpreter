@@ -1,227 +1,257 @@
 module TypeChecker (checkProgram) where
 
 import Debug.Trace
-import qualified Data.Map as M 
-import Control.Monad.Reader 
-import Control.Monad.State 
+import qualified Data.Map as M
+import Control.Monad.Reader
+import Control.Monad.State
 import Control.Monad.Except
 import AbsGramatyka
 import Data.Maybe
+import AbsGramatyka (Type'(Bool), ArgType' (VArgType, PArgType), ArgType)
+import Control.Exception.Base (TypeError)
+import GHC.IO.Encoding (argvEncoding)
 
 type Loc  = Int
 
-type Env  = M.Map String Type 
+type Env  = M.Map String TypeVal
 
-data Exceptions = VariableDoesNotExist String | InvalidType Type |  NumberOfArgumentsDoesNotMatch String deriving Show 
+type Exceptions = Exceptions' BNFC'Position
+data Exceptions' a = VariableDoesNotExist String a | InvalidType TypeVal a |  NumberOfArgumentsDoesNotMatch String a | PointerExpected a deriving Show
 
-type FunBody = ([Stmt], Env, [Type], Type)
+data ArgTypeVal = Value TypeVal | Pointer TypeVal deriving (Eq, Show)
 
-type REI = ReaderT Env (ExceptT Exceptions IO) 
+data TypeVal = BoolV | IntV | StringV | VoidV | FunV [ArgTypeVal] TypeVal deriving (Eq, Show)
+
+type REI = ReaderT Env (ExceptT Exceptions IO)
 -- u mnie musi się kompilować wszystko , a nie tylko do returna. Niepoprawnosc funkcji sprawdzam w runProgram.
 
 
-checkEval :: Type -> Type -> REI Bool
-checkEval a b =  do 
+checkEval :: TypeVal -> TypeVal -> BNFC'Position -> REI Bool
+checkEval a b position =  do
     -- liftIO $ putStrLn ("TYPY :" ++ show a ++ show b )
-    if a == b then return True else throwError (InvalidType a)
+    if a == b then return True else throwError (InvalidType a position)
 
-createType:: Arg -> Type
-createType (VArg t _) = t
-createType (PArg _ _) = Int
+castToMyType :: Type -> TypeVal
+castToMyType (Int _) = IntV
+castToMyType (Str _) = StringV
+castToMyType (Bool _) = BoolV
+castToMyType (Void _) = VoidV
+castToMyType (Fun _ args t) = FunV (map castArgTypeToMyArgType args) (castToMyType t)
 
-createTypes :: [Arg] -> [Type]
-createTypes a = map createType a
+castArgToMyArgType :: Arg -> ArgTypeVal
+castArgToMyArgType (VArg _ t _) = Value $ castToMyType t
+castArgToMyArgType (PArg _ t _) = Pointer $ castToMyType t
+
+castArgTypeToMyArgType :: ArgType -> ArgTypeVal
+castArgTypeToMyArgType (VArgType _ t) = Value $ castToMyType t
+castArgTypeToMyArgType (PArgType _ t) = Pointer $ castToMyType t
+
+castMyArgTypeToMyType :: ArgTypeVal -> TypeVal
+castMyArgTypeToMyType (Value t) = t
+castMyArgTypeToMyType (Pointer t) = t
+
+createType:: Arg -> TypeVal
+createType (VArg _ t _) = castToMyType t
+createType (PArg {}) = IntV
+
+createTypes :: [Arg] -> [ArgTypeVal]
+createTypes = map castArgToMyArgType
 
 getIdent:: Arg -> Ident
-getIdent (VArg _ ident) = ident
-getIdent (PArg _ ident) = ident
+getIdent (VArg _ _ ident) = ident
+getIdent (PArg _ _ ident) = ident
 
-checkArgs :: [Type] -> [Expr] -> Ident -> REI Bool
-checkArgs [] [] _ = return True
-checkArgs (t:types) (e:exprs) ident = do 
-    expr <- eval e
-    checkEval t expr
-    checkArgs types exprs ident
-checkArgs _ _ (Ident name) = throwError (NumberOfArgumentsDoesNotMatch name)
+checkArgs :: [ArgTypeVal] -> [Expr] -> Ident -> BNFC'Position-> REI Bool
+checkArgs [] [] _  _= return True
+checkArgs (t:types) (e:exprs) ident position = do
+    case t of
+        Pointer _ -> do
+            case e of
+                EVar _ _ -> do
+                    expr <- eval e
+                    checkEval (castMyArgTypeToMyType t) expr position
+                    checkArgs types exprs ident position
+                _ -> throwError (PointerExpected position)
+        Value _ -> do
+            expr <- eval e
+            checkEval (castMyArgTypeToMyType t) expr position
+            checkArgs types exprs ident position
+checkArgs _ _ (Ident name) position = throwError (NumberOfArgumentsDoesNotMatch name position)
 
-evalExprs :: [Expr] -> REI Type
-evalExprs [] = return Bool
-evalExprs (expr: exprs) = do 
+evalExprs :: [Expr] -> REI TypeVal
+evalExprs [] = return BoolV
+evalExprs (expr: exprs) = do
     eval expr
     evalExprs exprs
 
-eval :: Expr -> REI Type
-eval (ELitInt int) = do 
-    return Int
+eval :: Expr -> REI TypeVal
+eval (ELitInt _ int) = do
+    return IntV
 
-eval (ELitTrue) = do 
-    return Bool
+eval (ELitTrue _) = do
+    return BoolV
 
-eval (ELitFalse) = do 
-    return Bool
+eval (ELitFalse _) = do
+    return BoolV
 
-eval (EString _) = do 
-    return Str
+eval (EString _ _) = do
+    return StringV
 
-eval (Neg expr) = do 
-    return Int
-    
-eval (EMul e1 op e2) = do 
+eval (Neg _ expr) = do
+    return IntV
+
+eval (EMul position e1 op e2) = do
     n1 <- eval e1
     n2 <- eval e2
-    checkEval n1 Int
-    checkEval n1 Int
-    return Int
+    checkEval n1 IntV position
+    checkEval n1 IntV position
+    return IntV
 
-eval (EAdd e1 op e2) = do 
+eval (EAdd position e1 op e2) = do
     n1 <- eval e1
     n2 <- eval e2
-    checkEval n1 Int
-    checkEval n1 Int
+    checkEval n1 IntV position
+    checkEval n1 IntV position
     env <- ask
-    return Int
+    return IntV
 
-eval (ERel e1 op e2) = do 
+eval (ERel position e1 op e2) = do
     env <- ask
     n1 <- eval e1
     n2 <- eval e2
-    checkEval n1 Int
-    checkEval n1 Int
-    return Bool
+    checkEval n1 IntV position
+    checkEval n1 IntV position
+    return BoolV
 
-eval (EAnd e1 e2) = do 
+eval (EAnd position e1 e2) = do
     n1 <- eval e1
     n2 <- eval e2
-    checkEval n1 Int
-    checkEval n1 Int
-    return Bool
+    checkEval n1 IntV position
+    checkEval n1 IntV position
+    return BoolV
 
-eval (EOr e1 e2) = do 
+eval (EOr position e1 e2) = do
     n1 <- eval e1
     n2 <- eval e2
-    checkEval n1 Int
-    checkEval n1 Int
-    return Bool
+    checkEval n1 IntV position
+    checkEval n1 IntV position
+    return BoolV
 
-eval (EVar name) = do 
+eval (EVar position name) = do
     env <- ask
-    getType name
+    getType name position
 
 
-eval (ELam args t (SBlock stmts)) = do 
+eval (ELam _ args t (SBlock _ stmts)) = do
     env <- ask
-    let types = createTypes args
-        fun = Fun types t 
-    updatedEnv <- addVariables env args types
+    let argTypes = createTypes args
+        fun = FunV argTypes (castToMyType t)
+    updatedEnv <- addVariables env args
     local (const updatedEnv) (checkStatemets stmts)
     -- liftIO $ putStrLn $ "Lambda type: " ++ show t
-    return $ Fun types t
+    return fun
 
 
-eval (EApp ident args) =  do 
+eval (EApp position ident args) =  do
     env <- ask
-    case ident of 
+    case ident of
         Ident "print" -> evalExprs args
         _ -> do
-            Fun argTypes returnType <- getType ident 
-            checkArgs argTypes args ident
+            FunV argTypes returnType <- getType ident position
+            checkArgs argTypes args ident position
             return returnType
 
 
-getType:: Ident -> REI Type
-getType (Ident x) = do
+getType:: Ident -> BNFC'Position ->  REI TypeVal
+getType (Ident x)  position = do
     env <- ask
     case M.lookup x env of
         Just l -> return l
-        _ -> throwError (VariableDoesNotExist x)
+        _ -> throwError (VariableDoesNotExist x position)
 
 check :: Stmt -> REI Env
-check (BStmt (SBlock s))  = do
+check (BStmt _ (SBlock _ s))  = do
     env <- ask
-    finalEnv <- checkStatemets s 
-    return finalEnv
+    checkStatemets s
 
-check (Decl t []) = do
-    env <- ask
-    return env
+check (Decl _ t []) = do
+    ask
 
 
-check (Decl t ((Init (Ident x) s) : xs)) = do 
+check (Decl position t ((Init _ (Ident x) s) : xs)) = do
     evalType <- eval s
-    checkEval evalType t
+    checkEval evalType (castToMyType t) position
     env <- ask
-    let updatedEnv = M.insert x t env
-    local (const updatedEnv) (check (Decl t xs))
+    let updatedEnv = M.insert x (castToMyType t) env
+    local (const updatedEnv) (check (Decl position t xs))
 
-check (Ass s e) = do 
+check (Ass position s e) = do
     env <- ask
-    correctType <- getType s
+    correctType <- getType s position
     evalType <- eval e
-    checkEval evalType correctType
-    env <- ask
-    return env
+    checkEval evalType correctType position
+    ask
 
-check (VRet) = do 
-    env <- ask
-    return env
+check (VRet _) = do
+    ask
 
-check (Cond e (SBlock s)) = do 
+check (Cond _ e (SBlock _ s)) = do
     evalType <- eval e
     checkStatemets s
 
-check (CondElse e (SBlock s1) (SBlock s2)) = do 
+check (CondElse position e (SBlock _ s1) (SBlock _ s2)) = do
     evalType <- eval e
-    checkEval evalType  Bool
+    checkEval evalType  BoolV position
     checkStatemets s1
     checkStatemets s2
 
-check (While e s) = do
+check (While position e s) = do
     evalType <- eval e
-    checkEval evalType  Bool
+    checkEval evalType  BoolV position
     check s
-    env <- ask
-    return env
+    ask
 
-check (SExp e) = do 
+check (SExp _ e) = do
     eval e
-    env <- ask
-    return env
+    ask
 
-check (Ret e) = do
+check (Ret _ e) = do
     x <- eval e
-    env <- ask
-    return env
+    ask
 
-check (FunExp (PFnDef t (Ident ident) args (SBlock stmts))) = do
+check (FunExp _ (PFnDef _ t (Ident ident) args (SBlock _ stmts))) = do
     env <- ask
-    let types = createTypes args
-        fun = Fun types t 
+    let argTypes = createTypes args
+        fun = FunV argTypes (castToMyType t)
         updatedEnv = M.insert ident fun env
     -- liftIO $ putStrLn (show types) 
-    updatedEnv' <- addVariables updatedEnv args types
+    updatedEnv' <- addVariables updatedEnv args
     -- liftIO $ putStrLn ("siemaneczko" ++ show updatedEnv' ++ "\n\n " ++ show stmts) 
     local (const updatedEnv') (checkStatemets stmts)
     --zastnowić się którego enva zwracać
     return updatedEnv
 
-addVariables :: Env -> [Arg] -> [Type] -> REI Env
-addVariables env [] [] = return env
-addVariables env (arg:args) (t:types) = do 
-    let (Ident x) = getIdent arg
-        updatedEnv = M.insert x t env
-    addVariables updatedEnv args types
+addVariables :: Env -> [Arg] -> REI Env
+addVariables = foldM addVariable
+
+addVariable :: Env -> Arg -> REI Env
+addVariable env (VArg _ t (Ident x)) = do
+    return $ M.insert x (castToMyType t) env
+addVariable env (PArg _ t (Ident x)) = do
+    return $ M.insert x (castToMyType t) env
+
+
 
 checkStatemets :: [Stmt] -> REI Env
 checkStatemets [] = do
-    env <- ask
-    return env
+    ask
 checkStatemets (s:xs) = do
     env <- check s
     -- liftIO $ putStrLn $ "checkStatements env: " ++ show env ++ "\nstmts: " ++ show (s:xs) ++ "\n"
     local (const env) (checkStatemets xs)
 
-checkProgram :: Program -> IO (Either Exceptions ()) 
-checkProgram (SProgram stmts) = runExceptT $ do
+checkProgram :: Program -> IO (Either Exceptions ())
+checkProgram (SProgram _ stmts) = runExceptT $ do
     void $ runReaderT (checkStatemets stmts) env0
   where
-    env0 = M.empty 
+    env0 = M.empty

@@ -1,9 +1,9 @@
 
 module RunProgram (exec) where
-    
-import qualified Data.Map as M 
-import Control.Monad.Reader 
-import Control.Monad.State 
+
+import qualified Data.Map as M
+import Control.Monad.Reader
+import Control.Monad.State
 import Control.Monad.Except
 import AbsGramatyka
 import Data.Maybe
@@ -14,185 +14,205 @@ import Data.Maybe
 type Loc  = Int
 
 -- nie może być zmiennej o tej samej nazwie co funkcja
-type Env  = M.Map String Loc 
+type Env  = M.Map String Loc
 
-data Exceptions = DivByZero | ModByZero | ReturnTypeError deriving Show
+type Exceptions = Exceptions' BNFC'Position
+data Exceptions' a = DivByZero a| ModByZero a | ReturnTypeError a deriving Show
 
-type Store = M.Map Loc MemVal 
+type Store = M.Map Loc MemVal
 
-data MemVal = BoolV Bool | IntV Integer | StringV String | VoidV | FunV FunBody deriving Show
+data MemVal = VBool Bool | VInt Integer | VString String | VVoid | VFun FunBody deriving Show
+
+data ArgTypeVal = Value TypeVal | Pointer TypeVal deriving (Eq, Show)
 
 type RetVal = Maybe MemVal
 
+data TypeVal = BoolV | IntV | StringV | VoidV | FunV [ArgTypeVal] TypeVal deriving (Eq, Show)
+
 type FunBody = ([Stmt], Env, [Arg], Type)
 
-type RSEI a = ReaderT Env (StateT Store (ExceptT Exceptions IO)) a 
+type RSEI a = ReaderT Env (StateT Store (ExceptT Exceptions  IO)) a
 
-evalAdd Plus e1 e2 = e1 + e2
-evalAdd Minus e1 e2 = e1 - e2
+castToMyType :: Type -> TypeVal
+castToMyType (Int _) = IntV
+castToMyType (Str _) = StringV
+castToMyType (Bool _) = BoolV
+castToMyType (Void _) = VoidV
+castToMyType (Fun _ args t) = FunV (map castArgTypeToMyArgType args) (castToMyType t)
 
-evalMul Times e1 e2 = e1 * e2
-evalMul Div e1 e2 = div e1 e2
-evalMul Mod e1 e2 = mod e1 e2
+castArgToMyArgType :: Arg -> ArgTypeVal
+castArgToMyArgType (VArg _ t _) = Value $ castToMyType t
+castArgToMyArgType (PArg _ t _) = Pointer $ castToMyType t
 
-evalRel LTH e1 e2 = e1 < e2 ;
-evalRel LE e1 e2 = e1 <= e2;
-evalRel GTH e1 e2 = e1 > e2;
-evalRel GE e1 e2 = e1 >= e2;
-evalRel EQU e1 e2 = e1 == e2 ;
-evalRel NE e1 e2 = e1 /= e2;
+castArgTypeToMyArgType :: ArgType -> ArgTypeVal
+castArgTypeToMyArgType (VArgType _ t) = Value $ castToMyType t
+castArgTypeToMyArgType (PArgType _ t) = Pointer $ castToMyType t
 
-newloc :: Store -> Loc 
-newloc m =  if(M.null m) then 0 else let (i,w) = M.findMax m in i+1
+castMemValToMyType :: MemVal -> TypeVal
+castMemValToMyType (VBool _) = BoolV
+castMemValToMyType (VInt _) = IntV
+castMemValToMyType (VString _) = StringV
+castMemValToMyType (VVoid) = VoidV
+castMemValToMyType (VFun (_, _, args, t)) = FunV (map castArgToMyArgType args) (castToMyType t)
 
-newloc' :: RSEI Loc 
+castRetValToMyType :: RetVal -> TypeVal
+castRetValToMyType (Just value) = castMemValToMyType value
+castRetValToMyType Nothing = VoidV
+
+-- compareType :: Type -> Type -> Bool
+-- compareType (Int _) (Int _) = True
+-- compareType (Bool _) (Bool _) = True
+-- compareType (Str _) (Str _) = True
+-- compareType (Void _) (Void _) = True
+-- compareType (Fun _ argTypes1 t1) (Fun _ argTypes2 t2) = compareType t1 t2 && compareArgTypes argTypes1 argTypes2
+
+-- compareArgTypes :: [ArgType] -> [ArgType] -> Bool
+-- compareArgTypes [] [] = True
+-- compareArgTypes [arg1:args1] [arg2:args2] = compareArgType arg1 arg2 && compareArgTypes args1 args2
+-- compareArgTypes _ _ = False
+
+newloc :: Store -> Loc
+newloc m =  if M.null m then 0 else let (i,w) = M.findMax m in i+1
+
+newloc' :: RSEI Loc
 newloc' = do
     st <- get
     let l = newloc st
-    -- M.insert ()
-    modify (M.insert l VoidV)
+    modify (M.insert l VVoid)
     return l
 
 printValue :: [Expr] -> RSEI RetVal
-printValue (x:xs) = do 
+printValue (x:xs) = do
     w <- eval x
-    liftIO $ putStrLn (memValToString w) 
-    return (Nothing)
+    liftIO $ putStrLn (memValToString w)
+    return Nothing
 
 memValToString :: MemVal -> String
-memValToString (BoolV b) = if b then "True" else "False"
-memValToString (IntV n) = show n
-memValToString (StringV s) = s
+memValToString (VBool b) = if b then "True" else "False"
+memValToString (VInt n) = show n
+memValToString (VString s) = s
 
 identToString :: Ident -> String
 identToString (Ident s) = s
 
 argToString :: Arg -> String
-argToString (VArg t i) = identToString i
-argToString (PArg t i) = identToString i
+argToString (VArg _ t i) = identToString i
+argToString (PArg _ t i) = identToString i
 
 updateEnv :: Env -> Arg -> MemVal -> RSEI Env
 updateEnv env arg expr = do
-    l <- newloc' 
+    l <- newloc'
     case arg of
-        VArg _ i -> do 
-            l' <- newloc' 
+        VArg _ _ i -> do
+            l' <- newloc'
             modify (M.insert l' expr)
-            return (M.insert (argToString arg) l' env)  
-        PArg _ i -> do
-            l' <- getLocation i 
-            return (M.insert (argToString arg) l' env)  
+            return (M.insert (argToString arg) l' env)
+        PArg _ _ i -> do
+            l' <- getLocation i
+            return (M.insert (argToString arg) l' env)
 
 prepareFuncEnv :: Env -> [Arg] -> [MemVal] -> RSEI Env
 prepareFuncEnv env (arg : args) (expr : exprs) = do
-    -- liftIO $ putStrLn ("\nPrepareFunc: " ++ show arg ++ " " ++ show expr ++ " koniec \n")
-    -- liftIO $ putStrLn ("\nFall Start PrepareFunc: " ++ show env ++ " koniec \n")
     updatedEnv <- updateEnv env arg expr
-    -- liftIO $ putStrLn ("\nPrzed PrepareFunc: " ++ show updatedEnv ++ " koniec \n")
-    updatedEnv' <- prepareFuncEnv updatedEnv args exprs  
-    -- liftIO $ putStrLn ("\nPo PrepareFunc: " ++ show updatedEnv' ++ " koniec \n")
-    return updatedEnv'
+    prepareFuncEnv updatedEnv args exprs
 prepareFuncEnv env [] [] = do
     return env
 
-runFunction :: Ident -> [Expr] -> RSEI RetVal
-runFunction ident args = do
-    case ident of 
+runFunction :: Ident -> [Expr] -> BNFC'Position -> RSEI RetVal
+runFunction ident args position = do
+    case ident of
         Ident "print" -> printValue args
         _ -> do
-            -- liftIO $ putStrLn ("\nIdent : " ++ show ident ++ " koniec \n")
             loc <- getLocation ident
-            -- liftIO $ putStrLn ("\nLokacja : " ++ show loc ++ " koniec \n")
-            state <- get 
-            env <-ask 
+            state <- get
+            env <-ask
             case M.lookup loc state of
-                Just (FunV (stmt, funcEnv, arg, resType)) -> do
-                    -- liftIO $ putStrLn ("\nArg: " ++ show arg ++ " koniec \n")
+                Just (VFun (stmt, funcEnv, arg, resType)) -> do
                     funcArgs <- mapM eval args
-                    -- liftIO $ putStrLn ("\nSiema: " ++ show state ++ " koniec \n")
                     modifyFunEnv <- prepareFuncEnv funcEnv arg funcArgs
-                    -- liftIO $ putStrLn ("\nkotiwca : " ++ show modifyFunEnv ++ " koniec \n")
                     (newEnv, value) <- local (const modifyFunEnv) (interpretStatemets stmt)
-                    -- liftIO $ putStrLn ("\nkotiwca : " ++ show resType ++ " koniec \n")
-                    -- liftIO $ putStrLn ("\nEnvik : " ++ show env ++ " koniec \n")
-                    if resType /= Void && isNothing value then throwError ReturnTypeError 
-                    else  return value
+                    -- liftIO $ putStrLn $ "resType: " ++ show resType
+                    let res = castToMyType resType
+                    if res == castRetValToMyType value then return value else throwError (ReturnTypeError position)
 
 
 eval :: Expr -> RSEI MemVal
-eval (ELitInt int) = do 
-    return (IntV int)
+eval (ELitInt _ int) = do
+    return (VInt int)
 
-eval (ELitTrue) = do 
-    return (BoolV True)
+eval (ELitTrue _) = do
+    return (VBool True)
 
-eval (ELitFalse) = do 
-    return (BoolV False)
+eval (ELitFalse _) = do
+    return (VBool False)
 
-eval (EString string) = do 
-    return (StringV string)
+eval (EString _ string) = do
+    return (VString string)
 
-eval (Neg expr) = do 
-    IntV n <- eval expr
-    return (IntV $ -n)
+eval (Neg _ expr) = do
+    VInt n <- eval expr
+    return (VInt $ -n)
 
-eval (Not expr) = do 
-    BoolV e <- eval expr
-    return (BoolV $ not $ e)
+eval (Not _ expr) = do
+    VBool e <- eval expr
+    return (VBool $ not $ e)
 
-eval (EAdd e1 op e2) = do 
-    c1 <- eval e1
-    c2 <- eval e2  
-    env <- ask
-    state <- get
-    -- liftIO  $ putStrLn ("\n\n Dodawanie \n\n" ++ show c1 ++  "\n\n " ++ show c2 ++ "\n" ++ "env " ++ show env ++ "\n state:  \n" ++ show state)
-    IntV n1 <- eval e1
-    IntV n2 <- eval e2
-    return (IntV $ evalAdd op n1 n2)
-
-eval (EMul e1 op e2) = do 
-    IntV n1 <- eval e1
-    IntV n2 <- eval e2
+eval (EAdd _ e1 op e2) = do
+    VInt n1 <- eval e1
+    VInt n2 <- eval e2
     case op of
-        Div -> if n2 == 0 then throwError DivByZero else return (IntV $ evalMul op n1 n2)
-        Mod -> if n2 == 0 then throwError ModByZero else return (IntV $ evalMul op n1 n2)
-        _ -> return (IntV $ evalMul op n1 n2)
+        (Plus _ ) -> return $ VInt (n1 + n2)
+        (Minus _) -> return $ VInt (n1 - n2)
 
-eval (ERel e1 op e2) = do 
-    IntV n1 <- eval e1
-    IntV n2 <- eval e2
-    return (BoolV $ evalRel op n1 n2)
+eval (EMul _ e1 op e2) = do
+    VInt n1 <- eval e1
+    VInt n2 <- eval e2
+    case op of
+        (Div position)-> if n2 == 0 then throwError (DivByZero position) else return (VInt $ div n1 n2)
+        (Mod position)-> if n2 == 0 then throwError (ModByZero position) else return (VInt $ n1 * n2)
+        (Times _)-> return (VInt $ n1 * n2)
 
-eval (EAnd e1 e2) = do 
-    BoolV n1 <- eval e1
-    BoolV n2 <- eval e2
-    return (BoolV $ n1 && n2)
+eval (ERel _ e1 op e2) = do
+    VInt n1 <- eval e1
+    VInt n2 <- eval e2
+    case op of
+        (LTH _) -> return $ VBool ( n1 < n2);
+        (LE _) -> return $ VBool ( n1 <= n2);
+        (GTH _) -> return $ VBool ( n1 > n2);
+        (GE _) -> return $ VBool ( n1 >= n2);
+        (EQU _) -> return $ VBool ( n1 == n2);
+        (NE _) -> return $ VBool ( n1 /= n2);
 
-eval (EOr e1 e2) = do 
-    BoolV n1 <- eval e1
-    BoolV n2 <- eval e2
-    return (BoolV $ n1 || n2)
+eval (EAnd _ e1 e2) = do
+    VBool n1 <- eval e1
+    VBool n2 <- eval e2
+    return (VBool $ n1 && n2)
+
+eval (EOr _ e1 e2) = do
+    VBool n1 <- eval e1
+    VBool n2 <- eval e2
+    return (VBool $ n1 || n2)
 
 
-eval (EVar name) = do 
+eval (EVar _ name) = do
     loc <-  getLocation name
     state <- get
-    let value = fromMaybe (IntV 0) (M.lookup loc state)
+    let value = fromMaybe (VInt 0) (M.lookup loc state)
     return value
 
-eval (ELam args ty (SBlock stmts)) = do 
-    l <- newloc' 
+eval (ELam _ args ty (SBlock _ stmts)) = do
+    l <- newloc'
     env <- ask
     let funBody = (stmts, env, args, ty)
-        funValue = FunV funBody
+        funValue = VFun funBody
     modify (M.insert l funValue)
     return funValue
 
-eval (EApp ident args) =  do 
-    ret <- runFunction ident args
+eval (EApp position ident args) =  do
+    ret <- runFunction ident args position
     case ret of
         Just val -> return val
-        Nothing -> return (IntV 0)
+        Nothing -> return (VInt 0)
 
 getLocation :: Ident -> RSEI Int
 getLocation (Ident x) = do
@@ -211,54 +231,51 @@ interpretBlock (stmt:stmts) env = do
             Just _ -> return (newEnv, retVal)
             Nothing -> interpretBlock stmts newEnv
 
-interpret (BStmt (SBlock s)) = do
+interpret :: Stmt -> RSEI (Env, RetVal)
+interpret (BStmt _ (SBlock _ s )) = do
     env <- ask
     (finalEnv, _) <- interpretBlock s env
     return (finalEnv, Nothing)
 
-interpret (Decl t []) = do
+interpret (Decl _ t []) = do
     env <- ask
     return (env, Nothing)
 
-interpret (Decl t ((Init (Ident x) s) : xs)) = do 
-    l <- newloc' 
-    w <- eval s 
-    -- liftIO $ putStrLn ("Ident\n\n: " ++ x)
-    -- liftIO $ putStrLn ("wartosc\n\n: " ++ show w)
+interpret (Decl position t ((Init _ (Ident x) s) : xs)) = do
+    l <- newloc'
+    w <- eval s
     modify (M.insert l w)
-    -- st <- get
     env <- ask
     let updatedEnv = M.insert x l env
-    -- liftIO $ putStrLn ("nowyEnv: " ++ show st)
-    local (const (M.insert x l env)) (interpret (Decl t xs))
+    local (const (M.insert x l env)) (interpret (Decl position t xs))
 
-interpret (Ass s e) = do 
+interpret (Ass _ s e) = do
     l <- getLocation s
-    w <- eval e 
+    w <- eval e
     modify (M.insert l w)
     env <- ask
     return (env, Nothing)
 
-interpret (VRet) = do 
+interpret (VRet _) = do
     env <- ask
     return (env, Nothing)
 
-interpret (Cond e (SBlock s)) = do 
-    BoolV x <- eval e 
+interpret (Cond _ e (SBlock _ s)) = do
+    VBool x <- eval e
     env <- ask
-    if x then (interpretStatemets s) else return (env, Nothing)
+    if x then interpretStatemets s else return (env, Nothing)
 
-interpret (CondElse e (SBlock s1) (SBlock s2)) = do 
-    BoolV x <- eval e 
+interpret (CondElse _ e (SBlock _ s1) (SBlock _ s2)) = do
+    VBool x <- eval e
     env <- ask
-    if x then (interpretStatemets s1) else (interpretStatemets s2)
+    if x then interpretStatemets s1 else interpretStatemets s2
 
-interpret (While e s) = do 
-    BoolV x <- eval e 
+interpret (While position e s) = do
+    VBool x <- eval e
     if x then do
         (newEnv, value) <- interpret s
         if isNothing value then
-            interpret (While e s)
+            interpret (While position e s)
         else
             return (newEnv, value)
     else do
@@ -266,51 +283,42 @@ interpret (While e s) = do
         return (env, Nothing)
 
 
-interpret (SExp e) = do 
+interpret (SExp _ e) = do
     eval e
     env <- ask
     return (env, Nothing)
 
-interpret (Ret e) = do
+interpret (Ret _ e) = do
     env <- ask
     x <- eval e
     return (env, Just x)
 
 
-interpret (FunExp (PFnDef t (Ident ident) args (SBlock stmts))) = do
-    l <- newloc' 
+interpret (FunExp _ (PFnDef _ t (Ident ident) args (SBlock _ stmts))) = do
+    l <- newloc'
     env <- ask
     let updatedEnv = M.insert ident l env
-    
+
     updatedEnv' <- funcEnv updatedEnv args
-    
+
     let funBody = (stmts, updatedEnv', args, t)
-        funValue = FunV funBody
+        funValue = VFun funBody
     modify (M.insert l funValue)
     return (updatedEnv, Nothing)
 
 funcEnv :: Env -> [Arg] -> RSEI Env
-funcEnv env [] = return env
-funcEnv env (arg:args) = do 
-    env' <- addSingleVar arg env
-    funcEnv env' args
+funcEnv = foldM (flip addSingleVar)
 
 addSingleVar :: Arg -> Env -> RSEI Env
-addSingleVar (PArg _ _ ) env = return env  
-addSingleVar (VArg typ (Ident x)) env = do 
-    l <- newloc' 
-    -- w <- eval s 
-    -- liftIO $ putStrLn ("Ident\n\n: " ++ x)
-    -- liftIO $ putStrLn ("wartosc\n\n: " ++ show w)
-    -- modify (M.insert l w)
-    -- st <- get
-    -- env <- ask
+addSingleVar (PArg {} ) env = return env
+addSingleVar (VArg _ typ (Ident x)) env = do
+    l <- newloc'
     let updatedEnv = M.insert x l env
     return updatedEnv
 
 
 interpretStatemets :: [Stmt] -> RSEI (Env, RetVal)
-interpretStatemets [] = do 
+interpretStatemets [] = do
     env <- ask
     return (env, Nothing)
 
@@ -321,14 +329,13 @@ interpretStatemets (s:xs) = do
         Nothing -> local (const env) (interpretStatemets xs)
 
 
-exec :: Program -> IO (Either Exceptions Store) 
-exec (SProgram stmts) = runExceptT $ do
+exec :: Program -> IO (Either Exceptions Store)
+exec (SProgram _ stmts) = runExceptT $ do
     execStateT (runReaderT (interpretStatemets stmts) env0) state0
         where
-            state0 = M.empty 
+            state0 = M.empty
             env0 = M.empty
 
--- naprawić example1 ++ lambde
 -- z functorem zrobic
 
 
