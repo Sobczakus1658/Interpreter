@@ -49,6 +49,8 @@ newloc' :: RSEI Loc
 newloc' = do
     st <- get
     let l = newloc st
+    -- M.insert ()
+    modify (M.insert l VoidV)
     return l
 
 printValue :: [Expr] -> RSEI RetVal
@@ -139,10 +141,11 @@ eval (Not expr) = do
     return (BoolV $ not $ e)
 
 eval (EAdd e1 op e2) = do 
-    -- c <- eval e1 
-    -- env <- ask
-    -- state <- get
-    -- liftIO  $ putStrLn ("\n\n Dodawanie \n\n" ++ show c ++  "\n\n " ++ show e2 ++ "\n")
+    c1 <- eval e1
+    c2 <- eval e2  
+    env <- ask
+    state <- get
+    -- liftIO  $ putStrLn ("\n\n Dodawanie \n\n" ++ show c1 ++  "\n\n " ++ show c2 ++ "\n" ++ "env " ++ show env ++ "\n state:  \n" ++ show state)
     IntV n1 <- eval e1
     IntV n2 <- eval e2
     return (IntV $ evalAdd op n1 n2)
@@ -278,10 +281,32 @@ interpret (FunExp (PFnDef t (Ident ident) args (SBlock stmts))) = do
     l <- newloc' 
     env <- ask
     let updatedEnv = M.insert ident l env
-        funBody = (stmts, updatedEnv, args, t)
+    
+    updatedEnv' <- funcEnv updatedEnv args
+    
+    let funBody = (stmts, updatedEnv', args, t)
         funValue = FunV funBody
     modify (M.insert l funValue)
     return (updatedEnv, Nothing)
+
+funcEnv :: Env -> [Arg] -> RSEI Env
+funcEnv env [] = return env
+funcEnv env (arg:args) = do 
+    env' <- addSingleVar arg env
+    funcEnv env' args
+
+addSingleVar :: Arg -> Env -> RSEI Env
+addSingleVar (PArg _ _ ) env = return env  
+addSingleVar (VArg typ (Ident x)) env = do 
+    l <- newloc' 
+    -- w <- eval s 
+    -- liftIO $ putStrLn ("Ident\n\n: " ++ x)
+    -- liftIO $ putStrLn ("wartosc\n\n: " ++ show w)
+    -- modify (M.insert l w)
+    -- st <- get
+    -- env <- ask
+    let updatedEnv = M.insert x l env
+    return updatedEnv
 
 
 interpretStatemets :: [Stmt] -> RSEI (Env, RetVal)
@@ -303,9 +328,8 @@ exec (SProgram stmts) = runExceptT $ do
             state0 = M.empty 
             env0 = M.empty
 
--- jak pojawia się relacja to głupieje
--- naprawić example1
-
+-- naprawić example1 ++ lambde
 -- z functorem zrobic
+
 
 -- dalem blok zamiast Stmt w gramtyce

@@ -1,0 +1,1 @@
+ghc -o interpreter -package array -package containers -package mtl --make interpreter.hs RunProgram.hs TypeChecker.hs -main-is Interpreter
