@@ -5,7 +5,7 @@ import           ParGramatyka    (myLexer, pProgram)
 import           AbsGramatyka
 import           TypeChecker     (checkProgram)
 import           RunProgram      (exec)
-import           System.Environment (getArgs) 
+import           System.Environment (getArgs)
 
 data Exceptions = DivByZero | ModByZero | ReturnTypeError deriving Show
 
@@ -27,15 +27,13 @@ checkAndRunProgram program = do
     case result of
         Left err -> putStrLn $ "Type Error: " ++ show err
         Right _ -> do
-            --   putStrLn $ show program
               outcome <- exec program
               case outcome of
                   Left err -> putStrLn $ "Error during running: " ++ show err
-                  Right _ -> putStrLn $ "Exit"
+                  Right _ -> putStrLn "Exit \n"
 
 main :: IO ()
 main = do
     args <- getArgs
     case args of
         [file] -> interpretFromFile file
-        _      -> putStrLn "Usage: interpreter <filename>"

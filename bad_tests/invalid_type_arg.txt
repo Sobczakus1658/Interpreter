@@ -1,5 +1,0 @@
-int increase(int a){
-    a = a + 1;
-}
-string b = "hej";
-increase(b);

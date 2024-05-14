@@ -1,6 +1,0 @@
-int noReturn(int a){ 
-    a = a + 1;
-}
-
-int b = 0;
-int c = noReturn(b);

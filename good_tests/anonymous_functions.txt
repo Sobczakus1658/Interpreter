@@ -1,8 +1,0 @@
-int localIncrease(int a, (int,int) -> int  b) {
-    int x = 6;
-    return b(x,a);
-}
-
-int a = 4;
-print(localIncrease(a,lambda (int a, int c) int -> {return a + c;}));
-

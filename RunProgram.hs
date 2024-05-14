@@ -7,31 +7,7 @@ import Control.Monad.State
 import Control.Monad.Except
 import AbsGramatyka
 import Data.Maybe
-
-
-
---wzorowałem się rozwiązaniem p.Chrząszcza z labów
-type Loc  = Int
-
--- nie może być zmiennej o tej samej nazwie co funkcja
-type Env  = M.Map String Loc
-
-type Exceptions = Exceptions' BNFC'Position
-data Exceptions' a = DivByZero a| ModByZero a | ReturnTypeError a deriving Show
-
-type Store = M.Map Loc MemVal
-
-data MemVal = VBool Bool | VInt Integer | VString String | VVoid | VFun FunBody deriving Show
-
-data ArgTypeVal = Value TypeVal | Pointer TypeVal deriving (Eq, Show)
-
-type RetVal = Maybe MemVal
-
-data TypeVal = BoolV | IntV | StringV | VoidV | FunV [ArgTypeVal] TypeVal deriving (Eq, Show)
-
-type FunBody = ([Stmt], Env, [Arg], Type)
-
-type RSEI a = ReaderT Env (StateT Store (ExceptT Exceptions  IO)) a
+import ExceptionsAndTypes
 
 castToMyType :: Type -> TypeVal
 castToMyType (Int _) = IntV
@@ -52,24 +28,12 @@ castMemValToMyType :: MemVal -> TypeVal
 castMemValToMyType (VBool _) = BoolV
 castMemValToMyType (VInt _) = IntV
 castMemValToMyType (VString _) = StringV
-castMemValToMyType (VVoid) = VoidV
+castMemValToMyType VVoid = VoidV
 castMemValToMyType (VFun (_, _, args, t)) = FunV (map castArgToMyArgType args) (castToMyType t)
 
 castRetValToMyType :: RetVal -> TypeVal
 castRetValToMyType (Just value) = castMemValToMyType value
 castRetValToMyType Nothing = VoidV
-
--- compareType :: Type -> Type -> Bool
--- compareType (Int _) (Int _) = True
--- compareType (Bool _) (Bool _) = True
--- compareType (Str _) (Str _) = True
--- compareType (Void _) (Void _) = True
--- compareType (Fun _ argTypes1 t1) (Fun _ argTypes2 t2) = compareType t1 t2 && compareArgTypes argTypes1 argTypes2
-
--- compareArgTypes :: [ArgType] -> [ArgType] -> Bool
--- compareArgTypes [] [] = True
--- compareArgTypes [arg1:args1] [arg2:args2] = compareArgType arg1 arg2 && compareArgTypes args1 args2
--- compareArgTypes _ _ = False
 
 newloc :: Store -> Loc
 newloc m =  if M.null m then 0 else let (i,w) = M.findMax m in i+1
@@ -131,7 +95,6 @@ runFunction ident args position = do
                     funcArgs <- mapM eval args
                     modifyFunEnv <- prepareFuncEnv funcEnv arg funcArgs
                     (newEnv, value) <- local (const modifyFunEnv) (interpretStatemets stmt)
-                    -- liftIO $ putStrLn $ "resType: " ++ show resType
                     let res = castToMyType resType
                     if res == castRetValToMyType value then return value else throwError (ReturnTypeError position)
 
@@ -329,14 +292,16 @@ interpretStatemets (s:xs) = do
         Nothing -> local (const env) (interpretStatemets xs)
 
 
-exec :: Program -> IO (Either Exceptions Store)
+exec :: Program -> IO (Either ExceptionsRunning Store)
 exec (SProgram _ stmts) = runExceptT $ do
     execStateT (runReaderT (interpretStatemets stmts) env0) state0
         where
             state0 = M.empty
             env0 = M.empty
 
--- z functorem zrobic
-
-
 -- dalem blok zamiast Stmt w gramtyce
+-- zmieniłem typy w Types, w funkcji
+
+
+-- napisac make
+-- napisac readme

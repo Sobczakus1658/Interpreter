@@ -7,28 +7,12 @@ import Control.Monad.State
 import Control.Monad.Except
 import AbsGramatyka
 import Data.Maybe
-import AbsGramatyka (Type'(Bool), ArgType' (VArgType, PArgType), ArgType)
 import Control.Exception.Base (TypeError)
 import GHC.IO.Encoding (argvEncoding)
-
-type Loc  = Int
-
-type Env  = M.Map String TypeVal
-
-type Exceptions = Exceptions' BNFC'Position
-data Exceptions' a = VariableDoesNotExist String a | InvalidType TypeVal a |  NumberOfArgumentsDoesNotMatch String a | PointerExpected a deriving Show
-
-data ArgTypeVal = Value TypeVal | Pointer TypeVal deriving (Eq, Show)
-
-data TypeVal = BoolV | IntV | StringV | VoidV | FunV [ArgTypeVal] TypeVal deriving (Eq, Show)
-
-type REI = ReaderT Env (ExceptT Exceptions IO)
--- u mnie musi się kompilować wszystko , a nie tylko do returna. Niepoprawnosc funkcji sprawdzam w runProgram.
-
+import ExceptionsAndTypes
 
 checkEval :: TypeVal -> TypeVal -> BNFC'Position -> REI Bool
 checkEval a b position =  do
-    -- liftIO $ putStrLn ("TYPY :" ++ show a ++ show b )
     if a == b then return True else throwError (InvalidType a position)
 
 castToMyType :: Type -> TypeVal
@@ -148,7 +132,6 @@ eval (ELam _ args t (SBlock _ stmts)) = do
         fun = FunV argTypes (castToMyType t)
     updatedEnv <- addVariables env args
     local (const updatedEnv) (checkStatemets stmts)
-    -- liftIO $ putStrLn $ "Lambda type: " ++ show t
     return fun
 
 
@@ -169,7 +152,7 @@ getType (Ident x)  position = do
         Just l -> return l
         _ -> throwError (VariableDoesNotExist x position)
 
-check :: Stmt -> REI Env
+check :: Stmt -> REI TypeEnv
 check (BStmt _ (SBlock _ s))  = do
     env <- ask
     checkStatemets s
@@ -224,17 +207,14 @@ check (FunExp _ (PFnDef _ t (Ident ident) args (SBlock _ stmts))) = do
     let argTypes = createTypes args
         fun = FunV argTypes (castToMyType t)
         updatedEnv = M.insert ident fun env
-    -- liftIO $ putStrLn (show types) 
     updatedEnv' <- addVariables updatedEnv args
-    -- liftIO $ putStrLn ("siemaneczko" ++ show updatedEnv' ++ "\n\n " ++ show stmts) 
     local (const updatedEnv') (checkStatemets stmts)
-    --zastnowić się którego enva zwracać
     return updatedEnv
 
-addVariables :: Env -> [Arg] -> REI Env
+addVariables :: TypeEnv -> [Arg] -> REI TypeEnv
 addVariables = foldM addVariable
 
-addVariable :: Env -> Arg -> REI Env
+addVariable :: TypeEnv -> Arg -> REI TypeEnv
 addVariable env (VArg _ t (Ident x)) = do
     return $ M.insert x (castToMyType t) env
 addVariable env (PArg _ t (Ident x)) = do
@@ -242,15 +222,14 @@ addVariable env (PArg _ t (Ident x)) = do
 
 
 
-checkStatemets :: [Stmt] -> REI Env
+checkStatemets :: [Stmt] -> REI TypeEnv
 checkStatemets [] = do
     ask
 checkStatemets (s:xs) = do
     env <- check s
-    -- liftIO $ putStrLn $ "checkStatements env: " ++ show env ++ "\nstmts: " ++ show (s:xs) ++ "\n"
     local (const env) (checkStatemets xs)
 
-checkProgram :: Program -> IO (Either Exceptions ())
+checkProgram :: Program -> IO (Either ExceptionsChecker ())
 checkProgram (SProgram _ stmts) = runExceptT $ do
     void $ runReaderT (checkStatemets stmts) env0
   where

@@ -1,5 +1,0 @@
-int increase(int a, int b){
-    int c = a + b;
-}
-
-increase(1,2,3);

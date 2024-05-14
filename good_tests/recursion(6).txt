@@ -1,0 +1,13 @@
+void go_recursion(int x){
+    if (x != 3) {
+        print(x);
+        x = x - 1;
+        go_recursion(x);
+    }
+    else {
+        print(x);
+    }
+    endif
+}
+
+go_recursion(5);
