@@ -1,0 +1,6 @@
+int sum(int a, int b) {
+    string s = "Hello";
+    return s;
+}
+
+sum(1, 2);

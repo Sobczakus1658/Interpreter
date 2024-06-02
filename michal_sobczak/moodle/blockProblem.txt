@@ -1,0 +1,9 @@
+int x = 1;
+print(x);
+if (x < 10)
+{ 
+    int x = 100;
+    print(x);
+} 
+endif
+print(x); 

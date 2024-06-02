@@ -1,0 +1,6 @@
+int increase(int a, int b){
+    int c = a + b;
+    return c;
+}
+
+increase(1,2,3);

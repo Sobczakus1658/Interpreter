@@ -1,0 +1,6 @@
+int increase(int a){
+    a = a + 1;
+    return a;
+}
+string b = "hej";
+increase(b);

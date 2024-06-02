@@ -1,0 +1,5 @@
+int x = 3;
+if ( 5 + 4 ) {
+    print(x);
+}
+endif

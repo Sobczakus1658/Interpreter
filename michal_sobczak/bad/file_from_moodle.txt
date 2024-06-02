@@ -1,0 +1,14 @@
+int first(& int x){  
+ print("Jestem w first");
+ return 0;
+}
+
+int second((int) -> int f){
+ return f(2137);
+}
+
+void run(){
+ print(second(first));
+} 
+
+run();

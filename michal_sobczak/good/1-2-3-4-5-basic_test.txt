@@ -1,0 +1,18 @@
+int x = 2;
+while ( x > 0 ) {
+    x = x - 1;
+    print(x);
+}
+# print("Komentarz")
+
+print("After while");
+int y = 5;
+if (y == 5) {
+    print("in if");
+} 
+endif
+
+int x = 2 + 5;
+print(x);
+
+    

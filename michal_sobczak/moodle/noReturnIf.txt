@@ -1,0 +1,10 @@
+void noReturn(int a){
+    a = a + 1;
+    if (a > 10) {
+       return 15;
+    } endif
+}
+
+int b = 0;
+void c = noReturn(b);
+print(c);
